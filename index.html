@@ -344,106 +344,118 @@ const BLOCKS = [
   {title:'Блок 5 — Общая оценка', count:7},
 ];
 
-async function loadData() {
-  try {
-    const r = await fetch(API);
-    const rows = await r.json();
-    if (!Array.isArray(rows) || rows.length === 0) { showEmpty(); return; }
+function loadData() {
+  const cbName = 'cb_' + Date.now();
+  const script = document.createElement('script');
+  script.src = API + '?callback=' + cbName;
 
-    document.getElementById('heroTotal').textContent = rows.length;
-    document.getElementById('lastUpdate').textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU');
+  window[cbName] = function(rows) {
+    delete window[cbName];
+    document.head.removeChild(script);
+    processData(rows);
+  };
 
-    charts.forEach(c => c.destroy()); charts = [];
-
-    const keys = Object.keys(rows[0]).filter(k => k && k !== 'Отметка времени');
-    const data = {};
-    keys.forEach(k => {
-      data[k] = {};
-      rows.forEach(row => {
-        const v = row[k] || 'Нет ответа';
-        data[k][v] = (data[k][v] || 0) + 1;
-      });
-    });
-
-    const container = document.getElementById('chartsContainer');
-    container.innerHTML = '';
-    let qi = 0;
-
-    BLOCKS.forEach((block, bi) => {
-      const bd = document.createElement('div');
-      bd.innerHTML = `<div class="bh"><div class="bn">0${bi+1}</div><div class="bt">${block.title}</div></div>`;
-      const grid = document.createElement('div');
-      grid.className = 'cg';
-      bd.appendChild(grid);
-
-      for (let i = 0; i < block.count; i++) {
-        const q = keys[qi]; if (!q || !data[q]) { qi++; continue; }
-        const lbls = Object.keys(data[q]);
-        const vals = Object.values(data[q]);
-        const total = vals.reduce((a,b)=>a+b,0);
-        const maxV = Math.max(...vals);
-        const topL = lbls[vals.indexOf(maxV)];
-        const topP = ((maxV/total)*100).toFixed(0);
-        const isWide = lbls.length >= 4;
-        const isBar = lbls.length >= 4;
-        const isTall = lbls.length >= 5;
-        const shortQ = q.replace(/^\d+\.\s*/,'');
-
-        const card = document.createElement('div');
-        card.className = 'cc' + (isWide ? ' wide' : '');
-        card.innerHTML = `
-          <div class="cqn">Вопрос ${qi+1}</div>
-          <div class="cq">${shortQ}</div>
-          <div class="cw${isTall?' tall':''}"><canvas id="cv_${bi}_${i}"></canvas></div>
-          <div class="cf">
-            <div class="ctotal">Ответов: <span>${total}</span></div>
-            <div class="ctop">Лидер: <span>${topL.substring(0,28)}${topL.length>28?'…':''} (${topP}%)</span></div>
-          </div>`;
-        grid.appendChild(card);
-
-        const qIdx = qi;
-        setTimeout(() => {
-          const ctx = document.getElementById(`cv_${bi}_${i}`);
-          if (!ctx) return;
-          const ch = new Chart(ctx, {
-            type: isBar ? 'bar' : 'doughnut',
-            data: {
-              labels: lbls.map(l => l.length>40?l.substring(0,40)+'…':l),
-              datasets:[{ data:vals, backgroundColor:PAL.slice(0,lbls.length), borderColor:'transparent', borderRadius: isBar?4:0, borderWidth:0 }]
-            },
-            options:{
-              responsive:true, maintainAspectRatio:false,
-              plugins:{
-                legend:{ display:!isBar, position:'bottom', labels:{color:'#7a7a9a',font:{family:'Montserrat',size:10},padding:12,boxWidth:10,usePointStyle:true} },
-                tooltip:{
-                  callbacks:{ label: c => ` ${c.raw} чел. · ${((c.raw/total)*100).toFixed(1)}%` },
-                  backgroundColor:'#0f0f1a', titleColor:'#d4af37', bodyColor:'#f5f0e8',
-                  borderColor:'rgba(212,175,55,0.3)', borderWidth:1, padding:12
-                }
-              },
-              scales: isBar ? {
-                x:{ticks:{color:'#7a7a9a',font:{size:10},maxRotation:30},grid:{color:'rgba(255,255,255,0.04)'},border:{color:'rgba(255,255,255,0.08)'}},
-                y:{ticks:{color:'#7a7a9a',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'},border:{color:'rgba(255,255,255,0.08)'},beginAtZero:true}
-              } : {},
-              animation:{duration:900,easing:'easeInOutQuart'}
-            }
-          });
-          charts.push(ch);
-        }, 80);
-        qi++;
-      }
-      container.appendChild(bd);
-    });
-  } catch(e) {
+  script.onerror = function() {
+    delete window[cbName];
+    document.head.removeChild(script);
     document.getElementById('chartsContainer').innerHTML = `
       <div class="loading">
         <div style="font-size:2.5rem">⚠️</div>
         <div style="color:#ff6b6b">Ошибка загрузки данных</div>
-        <div style="font-size:0.75rem;color:var(--gray)">Проверьте подключение к интернету</div>
+        <div style="font-size:0.75rem;color:var(--gray)">Включите VPN и попробуйте снова</div>
         <button class="rbtn" onclick="loadData()" style="margin-top:1rem">Попробовать снова</button>
       </div>`;
-    console.error(e);
-  }
+  };
+
+  document.head.appendChild(script);
+}
+
+function processData(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) { showEmpty(); return; }
+
+  document.getElementById('heroTotal').textContent = rows.length;
+  document.getElementById('lastUpdate').textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU');
+
+  charts.forEach(c => c.destroy()); charts = [];
+
+  const keys = Object.keys(rows[0]).filter(k => k && k !== 'Отметка времени');
+  const data = {};
+  keys.forEach(k => {
+    data[k] = {};
+    rows.forEach(row => {
+      const v = row[k] || 'Нет ответа';
+      data[k][v] = (data[k][v] || 0) + 1;
+    });
+  });
+
+  const container = document.getElementById('chartsContainer');
+  container.innerHTML = '';
+  let qi = 0;
+
+  BLOCKS.forEach((block, bi) => {
+    const bd = document.createElement('div');
+    bd.innerHTML = `<div class="bh"><div class="bn">0${bi+1}</div><div class="bt">${block.title}</div></div>`;
+    const grid = document.createElement('div');
+    grid.className = 'cg';
+    bd.appendChild(grid);
+
+    for (let i = 0; i < block.count; i++) {
+      const q = keys[qi]; if (!q || !data[q]) { qi++; continue; }
+      const lbls = Object.keys(data[q]);
+      const vals = Object.values(data[q]);
+      const total = vals.reduce((a,b)=>a+b,0);
+      const maxV = Math.max(...vals);
+      const topL = lbls[vals.indexOf(maxV)];
+      const topP = ((maxV/total)*100).toFixed(0);
+      const isWide = lbls.length >= 4;
+      const isBar = lbls.length >= 4;
+      const isTall = lbls.length >= 5;
+      const shortQ = q.replace(/^\d+\.\s*/,'');
+
+      const card = document.createElement('div');
+      card.className = 'cc' + (isWide ? ' wide' : '');
+      card.innerHTML = `
+        <div class="cqn">Вопрос ${qi+1}</div>
+        <div class="cq">${shortQ}</div>
+        <div class="cw${isTall?' tall':''}"><canvas id="cv_${bi}_${i}"></canvas></div>
+        <div class="cf">
+          <div class="ctotal">Ответов: <span>${total}</span></div>
+          <div class="ctop">Лидер: <span>${topL.substring(0,28)}${topL.length>28?'…':''} (${topP}%)</span></div>
+        </div>`;
+      grid.appendChild(card);
+
+      setTimeout(() => {
+        const ctx = document.getElementById(`cv_${bi}_${i}`);
+        if (!ctx) return;
+        const ch = new Chart(ctx, {
+          type: isBar ? 'bar' : 'doughnut',
+          data: {
+            labels: lbls.map(l => l.length>40?l.substring(0,40)+'…':l),
+            datasets:[{ data:vals, backgroundColor:PAL.slice(0,lbls.length), borderColor:'transparent', borderRadius: isBar?4:0, borderWidth:0 }]
+          },
+          options:{
+            responsive:true, maintainAspectRatio:false,
+            plugins:{
+              legend:{ display:!isBar, position:'bottom', labels:{color:'#7a7a9a',font:{family:'Montserrat',size:10},padding:12,boxWidth:10,usePointStyle:true} },
+              tooltip:{
+                callbacks:{ label: c => ` ${c.raw} чел. · ${((c.raw/total)*100).toFixed(1)}%` },
+                backgroundColor:'#0f0f1a', titleColor:'#d4af37', bodyColor:'#f5f0e8',
+                borderColor:'rgba(212,175,55,0.3)', borderWidth:1, padding:12
+              }
+            },
+            scales: isBar ? {
+              x:{ticks:{color:'#7a7a9a',font:{size:10},maxRotation:30},grid:{color:'rgba(255,255,255,0.04)'},border:{color:'rgba(255,255,255,0.08)'}},
+              y:{ticks:{color:'#7a7a9a',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'},border:{color:'rgba(255,255,255,0.08)'},beginAtZero:true}
+            } : {},
+            animation:{duration:900,easing:'easeInOutQuart'}
+          }
+        });
+        charts.push(ch);
+      }, 80);
+      qi++;
+    }
+    container.appendChild(bd);
+  });
 }
 
 function showEmpty() {
